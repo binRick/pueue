@@ -2,7 +2,7 @@ use std::env;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::process::Command;
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use tempfile::NamedTempFile;
 
 use pueue_lib::network::message::*;
@@ -60,11 +60,19 @@ pub fn edit_line(line: &str) -> Result<String> {
     writeln!(file, "{}", line).expect("Failed writing to temporary file");
 
     // Start the editor on this file.
-    let editor = &env::var("EDITOR").unwrap_or_else(|_e| "vi".to_string());
-    Command::new(editor)
+    let editor = match env::var("EDITOR") {
+        Err(_) => bail!("The '$EDITOR' environment variable couldn't be read. Aborting."),
+        Ok(editor) => editor,
+    };
+
+    let status = Command::new(editor)
         .arg(file.path())
         .status()
-        .context("Failed to start editor. Do you have the $EDITOR environment variable set?")?;
+        .context("Editor command did somehow fail. Aborting.")?;
+
+    if !status.success() {
+        bail!("The editor exited with a non-zero code. Aborting");
+    }
 
     // Read the file.
     let mut file = file.into_file();
